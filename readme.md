@@ -15,11 +15,6 @@ All technology used in this project is hosted on the AWS account:
 
 ```https://665687765246.signin.aws.amazon.com/console```
 
-The following username/password can be used to sign into our AWS account:
-```
-username: redcross
-password: dc-aws-hack19
-```
 
 The code involved with this project is as follows:
 
