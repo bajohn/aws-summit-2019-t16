@@ -1,0 +1,68 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "EC2 instance for scraping the API"
+
+Parameters:
+  SSHKey:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+
+Resources:
+  ExtractInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone: us-east-1a
+      ImageId: ami-0a313d6098716f372 #ami-0c6b1d09930fac512 #
+      InstanceType: t2.micro
+      KeyName: !Ref SSHKey
+      IamInstanceProfile: ec2_instance_comprehend_dynamodb
+      SecurityGroups:
+        - !Ref SSHSecurityGroup
+      # we install our web server with user data
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          yum -y update
+          yum install -y python3.x86_64
+          yum update -y aws-cfn-bootstrap
+          # Start cfn-init
+          /opt/aws/bin/cfn-init -s ${AWS::StackId} -r nginxInstance --region ${AWS::Region} || error_exit 'Failed to run cfn-init'
+          # Start up the cfn-hup daemon to listen for changes to the EC2 instance metadata
+          /opt/aws/bin/cfn-hup || error_exit 'Failed to start cfn-hup'
+
+          # Start cfn-signal to the wait condition
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource nginxInstance --region ${AWS::Region}
+
+    Metadata:
+      Comment: run the commands
+      AWS::CloudFormation::Init:
+        config:
+          packages:
+            pop:
+              boto3 : []
+              bs4 : []
+          commands:
+            download_from_s3:
+              command : aws s3 cp s3://t16-red-cross/code/extract.py /home/ec2-user/extract_jobs.py
+            run_code:
+              command : python3 /home/ec2-user/extract_jobs.py
+
+
+          services:
+              cfn-hup: 
+                enabled: "true"
+                ensureRunning : "true"
+                files: 
+                 - "/etc/cfn/cfn-hup.conf"
+                 - "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
+
+  # our EC2 security group
+  SSHSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SSH and HTTP
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
